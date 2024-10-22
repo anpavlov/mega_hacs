@@ -32,7 +32,7 @@ from .const import (
     CONF_FORCE_I2C_SCAN,
     REMOVE_CONFIG,
 )
-from .entities import set_events_off, BaseMegaEntity, MegaOutPort, safe_int
+from .entities import set_events_off, BaseMegaEntity, MegaOutPort, safe_int, safe_float
 from .exceptions import CannotConnect, NoPort
 from .i2c import parse_scan_page
 from .tools import make_ints, int_ignore, PriorityLock
@@ -164,10 +164,13 @@ class MegaD:
             if allow_hosts is not None and DOMAIN in hass.data:
                 allow_hosts = set(allow_hosts.split(";"))
                 hass.data[DOMAIN][CONF_HTTP].allowed_hosts |= allow_hosts
-            hass.data[DOMAIN][CONF_HTTP].protected = protected
+                hass.data[DOMAIN][CONF_HTTP].protected = protected
         except Exception:
             self.lg.exception("while setting allowed hosts")
         self.binary_sensors = []
+        self.sht31inited = (
+            set()
+        )  # список портов sht31 которые уже успешно проинициализированы были
 
     async def start(self):
         pass
@@ -477,7 +480,7 @@ class MegaD:
             return
         ret = {}
         for i, x in enumerate(values.split(";")):
-            ret[f"{port}e{i}"] = x
+            ret[f"{port}e{i}" if not self.new_naming else f"{port:02d}e{i:02d}"] = x
         return ret
 
     async def _update_i2c(self, params):
@@ -486,18 +489,45 @@ class MegaD:
         :param params: параметры url
         :return:
         """
+        params = params.copy()
         pt = params.get("pt")
+        i2c_dev = params.get("i2c_dev", None)
+
         if pt in self.skip_ports:
             return
-        if pt is not None:
-            pass
+        if pt is None:
+            return
+
         _params = tuple(params.items())
+        if i2c_dev is not None and i2c_dev == "sht31" and pt not in self.sht31inited:
+            __params = params.copy()
+            __params["i2c_par"] = 9
+            # инициализация сенсора
+            await self.request(**__params)
+            await asyncio.sleep(0.1)
+            self.sht31inited.add(pt)
         delay = None
+        idx: int = params.pop("idx", None)
+        pt: int = params.get("pt", None)
         if "delay" in params:
             delay = params.pop("delay")
         try:
-            ret = {_params: await self.request(**params)}
-        except asyncio.TimeoutError:
+            if idx is None or idx == 0:
+                v: str = await self.request(**params)
+                # scd4x фактически отдает сразу 3 датчика на одном запросе, не ложится
+                # в общую архитектуру, поэтому используется такой костыль с кешем
+                self.values[f"chache_{pt}"] = v
+            elif idx is not None and idx > 0:
+                v: str = self.values.get(f"chache_{pt}")
+            if idx is not None:
+                vv = v.split("/")
+                if len(vv) == 3:
+                    v = vv[idx]
+                else:
+                    v: None
+            ret = {_params: safe_float(v)}
+        except Exception:
+            self.lg.exception(f"while getting i2c {params=}")
             return
         self.lg.debug("i2c response: %s", ret)
         if delay:

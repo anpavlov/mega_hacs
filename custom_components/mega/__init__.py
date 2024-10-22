@@ -269,9 +269,8 @@ async def async_migrate_entry(hass, config_entry: ConfigEntry):
     cfg = await hub.get_config()
     await hub.stop()
     new.update(cfg)
-    _LOGGER.debug(f'new config: %s', new)
-    config_entry.data = new
-    config_entry.version = ConfigFlow.VERSION
+    _LOGGER.debug(f"new config: %s", new)
+    hass.config_entries.async_update_entry(config_entry, data=new, version = ConfigFlow.VERSION)
 
     _LOGGER.info("Migration to version %s successful", config_entry.version)
 

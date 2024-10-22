@@ -661,7 +661,7 @@ class MegaD:
             cfg.pop(x, None)
         cfg.update(new)
         self.lg.debug(f"new config: %s", cfg)
-        self.config.data = cfg
+        self.hass.config_entries.async_update_entry(self.config, data=cfg)
         if reload_entry:
             await self.hass.config_entries.async_reload(self.config.entry_id)
         return cfg

@@ -120,8 +120,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             reload = user_input.pop(CONF_RELOAD)
             cfg = dict(self.config_entry.data)
             cfg.update(user_input)
-            cfg['new_naming'] = new_naming
-            self.config_entry.data = cfg
+            cfg["new_naming"] = new_naming
+            self.hass.config_entries.async_update_entry(self.config_entry, data=cfg)
             await get_hub(self.hass, cfg)
 
             if reload:
